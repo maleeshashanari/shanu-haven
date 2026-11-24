@@ -1,0 +1,282 @@
+/* ===================================
+   SHANU HAVEN - LOCATION SECTION
+=================================== */
+
+.sh-location-section {
+    padding: 65px 6%;
+    background: #12343B;
+    color: #F7F4ED;
+}
+
+/* Section Heading */
+
+.sh-location-heading {
+    text-align: center;
+    margin-bottom: 35px;
+}
+
+.sh-location-subtitle {
+    color: #D7B98E;
+    font-size: 12px;
+    letter-spacing: 4px;
+    font-weight: 600;
+}
+
+.sh-location-heading h2 {
+    color: #F7F4ED;
+    font-size: 36px;
+    margin: 12px 0;
+}
+
+.sh-location-heading p {
+    color: #c8d5d7;
+    font-size: 15px;
+    line-height: 1.7;
+}
+
+/* Main Container */
+
+.sh-location-container {
+    max-width: 1200px;
+    margin: auto;
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 25px;
+    align-items: stretch;
+}
+
+/* Map */
+
+.sh-map-wrapper {
+    border: 1px solid rgba(215, 185, 142, 0.4);
+    border-radius: 18px;
+    overflow: hidden;
+    min-height: 420px;
+}
+
+#villaMap {
+    width: 100%;
+    height: 100%;
+    min-height: 420px;
+    z-index: 1;
+}
+
+/* Glass Information Card */
+
+.sh-location-info {
+    padding: 28px;
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(215, 185, 142, 0.35);
+    border-radius: 18px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+.sh-location-label {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: #D7B98E;
+}
+
+.sh-location-info h3 {
+    font-size: 28px;
+    color: #F7F4ED;
+    margin: 12px 0;
+}
+
+.sh-location-address {
+    color: #D7B98E;
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+.sh-location-description {
+    color: #c8d5d7;
+    font-size: 14px;
+    line-height: 1.8;
+    margin-bottom: 20px;
+}
+
+/* Distance Box */
+
+.sh-location-distance {
+    background: rgba(215, 185, 142, 0.08);
+    border-left: 3px solid #D7B98E;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.sh-location-distance span {
+    display: block;
+    color: #D7B98E;
+    font-size: 12px;
+    margin-bottom: 7px;
+}
+
+#villaDistance {
+    color: #F7F4ED;
+    font-size: 16px;
+}
+
+/* GPS Button */
+
+.sh-gps-btn,
+.sh-directions-btn {
+    width: 100%;
+    padding: 13px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.3s ease;
+}
+
+.sh-gps-btn {
+    background: #D7B98E;
+    color: #12343B;
+    border: 1px solid #D7B98E;
+    margin-bottom: 12px;
+}
+
+.sh-gps-btn:hover {
+    background: #F7F4ED;
+    border-color: #F7F4ED;
+    transform: translateY(-2px);
+}
+
+.sh-gps-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+}
+
+/* Directions Button */
+
+.sh-directions-btn {
+    background: transparent;
+    color: #D7B98E;
+    border: 1px solid #D7B98E;
+}
+
+.sh-directions-btn:hover {
+    background: #D7B98E;
+    color: #12343B;
+    transform: translateY(-2px);
+}
+
+/* GPS Status */
+
+#gpsStatus {
+    color: #b9cacc;
+    font-size: 12px;
+    line-height: 1.6;
+    margin-top: 15px;
+    overflow-wrap: anywhere;
+}
+
+/* Responsive Design */
+
+@media (max-width: 850px) {
+
+    .sh-location-container {
+        grid-template-columns: 1fr;
+    }
+
+    .sh-location-heading h2 {
+        font-size: 28px;
+    }
+
+    .sh-location-section {
+        padding: 45px 5%;
+    }
+
+    #villaMap,
+    .sh-map-wrapper {
+        min-height: 350px;
+    }
+}
+
+@media (max-width: 480px) {
+
+    .sh-location-info {
+        padding: 20px;
+    }
+
+    #villaMap,
+    .sh-map-wrapper {
+        min-height: 300px;
+    }
+}
+
+/* ===================================
+   LOCATION SEARCH UPGRADE
+=================================== */
+
+.sh-location-search {
+    margin-top: 20px;
+    margin-bottom: 12px;
+}
+
+.sh-location-search label {
+    display: block;
+    color: #D7B98E;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+#locationSearch,
+#locationResults {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 13px;
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(215, 185, 142, 0.4);
+    border-radius: 8px;
+    color: #F7F4ED;
+    font-size: 14px;
+    outline: none;
+}
+
+#locationSearch::placeholder {
+    color: #b9cacc;
+}
+
+#locationSearch:focus,
+#locationResults:focus {
+    border-color: #D7B98E;
+    box-shadow: 0 0 8px rgba(215, 185, 142, 0.2);
+}
+
+#locationResults option {
+    background: #12343B;
+    color: #F7F4ED;
+}
+
+#findLocationBtn,
+#selectMapBtn {
+    margin-bottom: 12px;
+}
+
+#selectedLocation {
+    display: block;
+    color: #F7F4ED;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+.sh-distance-label {
+    margin-top: 15px;
+}
+
+.sh-map-selecting {
+    cursor: crosshair !important;
+}
+
+#searchLocationBtn:disabled,
+#findLocationBtn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}

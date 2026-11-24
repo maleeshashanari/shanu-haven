@@ -213,6 +213,14 @@ function homeRoomImage($filename) {
 
 </style>
 
+<!-- Leaflet Map CSS -->
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<!-- Location Section CSS -->
+<link rel="stylesheet"
+      href="assets/CSS/location.css">
+
 </head>
 
 <body>
@@ -760,6 +768,8 @@ function homeRoomImage($filename) {
                     Contact Us
                 </a>
 
+                <a href="#location">Location</a>
+
                 <p class="booking-note">
                    Online reservations are now available.
                 </p>
@@ -832,6 +842,132 @@ function homeRoomImage($filename) {
 
         </div>
 
+        <!-- ===================================
+     LOCATION AND GPS SECTION
+==================================== -->
+
+<section class="sh-location-section" id="location">
+
+    <div class="sh-location-heading">
+        <span class="sh-location-subtitle">
+            DISCOVER OUR LOCATION
+        </span>
+
+        <h2>Find Your Coastal Escape</h2>
+
+        <p>
+            Discover Shanu Haven in Galle, Sri Lanka
+            and plan your journey with ease.
+        </p>
+    </div>
+
+    <div class="sh-location-container">
+
+        <!-- Interactive Map -->
+        <div class="sh-map-wrapper">
+            <div id="villaMap"></div>
+        </div>
+
+        <!-- Location Information -->
+        <div class="sh-location-info">
+
+            <span class="sh-location-label">
+                OUR LOCATION
+            </span>
+
+            <h3>Shanu Haven</h3>
+
+            <p class="sh-location-address">
+                Galle, Southern Province, Sri Lanka
+            </p>
+
+            <p class="sh-location-description">
+                Enjoy a peaceful coastal escape
+                surrounded by the natural beauty
+                of southern Sri Lanka.
+            </p>
+
+           <!-- Starting Location -->
+
+<div class="sh-location-search">
+
+    <label for="locationSearch">
+        Choose Your Starting Location
+    </label>
+
+    <input type="text"
+           id="locationSearch"
+           placeholder="Enter city or location..."
+           autocomplete="off">
+
+    <button type="button"
+            id="searchLocationBtn"
+            class="sh-gps-btn">
+        Search Location
+    </button>
+
+    <select id="locationResults"
+            aria-label="Search results"
+            hidden>
+    </select>
+
+</div>
+
+<!-- GPS Location -->
+
+<button type="button"
+        id="findLocationBtn"
+        class="sh-directions-btn">
+    &#8982; Use My Current Location
+</button>
+
+<!-- Manual Map Selection -->
+
+<button type="button"
+        id="selectMapBtn"
+        class="sh-directions-btn">
+    Select on Map
+</button>
+
+<!-- Selected Location -->
+
+<div class="sh-location-distance">
+
+    <span>Starting Location</span>
+
+    <strong id="selectedLocation">
+        Not selected
+    </strong>
+
+    <span class="sh-distance-label">
+        Distance to Villa
+    </span>
+
+    <strong id="villaDistance">
+        Select your location
+    </strong>
+
+</div>
+
+<!-- Directions -->
+
+<button type="button"
+        id="directionsBtn"
+        class="sh-gps-btn">
+    &#10148; Get Directions
+</button>
+
+<p id="gpsStatus" aria-live="polite">
+    Search a city, use GPS or select a location on the map.
+</p> 
+
+
+        </div>
+
+    </div>
+
+</section>
+
 
         <!-- Copyright -->
         <div class="footer-bottom">
@@ -845,6 +981,11 @@ function homeRoomImage($filename) {
         </div>
 
     </footer>
+    <!-- Leaflet Map JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Location and GPS JavaScript -->
+<script src="assets/js/location.js"></script>
 
 </body>
 </html>
