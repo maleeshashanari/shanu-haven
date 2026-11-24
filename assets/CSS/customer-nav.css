@@ -1,0 +1,144 @@
+/* ==========================================
+   SHANU HAVEN - CUSTOMER NAVIGATION
+========================================== */
+
+.customer-nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: 60px;
+}
+
+/* Customer Name */
+
+.customer-nav-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    padding: 10px 14px;
+
+    color: #F7F4ED;
+    font-size: 14px;
+    font-weight: 500;
+
+    background: rgba(255, 255, 255, 0.06);
+
+    border: 1px solid rgba(215, 185, 142, 0.30);
+    border-radius: 8px;
+
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+}
+
+.customer-user-icon {
+    color: #D7B98E;
+    font-size: 12px;
+}
+
+/* Login Button */
+
+.customer-login-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 10px 22px;
+
+    color: #D7B98E;
+    background: transparent;
+
+    border: 1px solid #D7B98E;
+    border-radius: 8px;
+
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+
+    transition: 0.3s ease;
+}
+
+.customer-login-btn:hover {
+    color: #12343B;
+    background: #D7B98E;
+
+    box-shadow:
+        0 0 15px rgba(215, 185, 142, 0.20);
+}
+
+/* Register and Logout Buttons */
+
+.customer-register-btn,
+.customer-logout-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 11px 22px;
+
+    background: linear-gradient(
+        135deg,
+        #D7B98E,
+        #E6CBA5
+    );
+
+    color: #12343B;
+
+    border: 1px solid transparent;
+    border-radius: 8px;
+
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+
+    cursor: pointer;
+    transition: 0.3s ease;
+}
+
+.customer-register-btn:hover,
+.customer-logout-btn:hover {
+    background: #E8CFA9;
+
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 5px 20px rgba(215, 185, 142, 0.25);
+}
+
+/* Logout Form */
+
+.customer-logout-form {
+    margin: 0;
+    padding: 0;
+}
+
+/* Keyboard Accessibility */
+
+.customer-nav-actions a:focus-visible,
+.customer-logout-btn:focus-visible {
+    outline: 2px solid #F7F4ED;
+    outline-offset: 4px;
+}
+
+/* Responsive Design */
+
+@media (max-width: 768px) {
+
+    .customer-nav-actions {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    .customer-login-btn,
+    .customer-register-btn,
+    .customer-logout-btn {
+        padding: 9px 16px;
+        font-size: 13px;
+    }
+
+    .customer-nav-name {
+        font-size: 13px;
+    }
+}

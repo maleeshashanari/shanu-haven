@@ -1,6 +1,9 @@
 
 <?php
-session_start();
+
+require_once __DIR__ . '/config/customer-session.php';
+requireCustomerLogin();
+
 require_once __DIR__ . '/config/database.php';
 
 function e($value) {
@@ -11,7 +14,24 @@ function e($value) {
     );
 }
 
-// Get room ID
+// Get logged-in customer
+$userId = getCustomerId();
+
+$stmt = $pdo->prepare(
+    "SELECT name, email, contact_number
+     FROM users
+     WHERE user_id = ? AND role = 'customer'"
+);
+
+$stmt->execute([$userId]);
+$customer = $stmt->fetch();
+
+if (!$customer) {
+    http_response_code(403);
+    exit('Customer account not found.');
+}
+
+// Get selected room
 $roomId = filter_input(
     INPUT_GET,
     'room_id',
@@ -20,102 +40,104 @@ $roomId = filter_input(
 
 if (!$roomId || $roomId < 1) {
     http_response_code(404);
-    exit("Invalid room selected.");
+    exit('Invalid room selected.');
 }
 
-// Get selected room
 $stmt = $pdo->prepare(
-    "SELECT * FROM rooms WHERE room_id = ?"
+    'SELECT * FROM rooms WHERE room_id = ?'
 );
+
 $stmt->execute([$roomId]);
 $room = $stmt->fetch();
 
 if (!$room) {
     http_response_code(404);
-    exit("Room not found.");
+    exit('Room not found.');
 }
 
-// Allowed room images
-$allowedImages = [
-    'Deluxe Room.png',
-    'Ocean View Room.png',
-    'Family Suite.png'
-];
+$isRoomAvailable = $room['status'] === 'available';
 
-$imageName = in_array(
-    $room['image'],
-    $allowedImages,
-    true
-) ? $room['image'] : 'villa-hero.png';
+// Room image
+$imageName = basename((string)($room['image'] ?? ''));
 
-$imagePath = 'assets/images/' .
-    rawurlencode($imageName);
+if (
+    preg_match('/^room_[a-f0-9]{32}\.(jpg|jpeg|png|webp)$/i', $imageName)
+    && is_file(__DIR__ . '/assets/images/rooms/' . $imageName)
+) {
+    $imagePath = 'assets/images/rooms/' .
+        rawurlencode($imageName);
 
-// CSRF token
+} elseif (
+    preg_match('/\.(jpg|jpeg|png|webp)$/i', $imageName)
+    && is_file(__DIR__ . '/assets/images/' . $imageName)
+) {
+    $imagePath = 'assets/images/' .
+        rawurlencode($imageName);
+
+} else {
+    $imagePath = 'assets/images/villa-hero.png';
+}
+
+// CSRF protection
 if (empty($_SESSION['booking_csrf'])) {
-    $_SESSION['booking_csrf'] =
-        bin2hex(random_bytes(32));
+    $_SESSION['booking_csrf'] = bin2hex(random_bytes(32));
 }
 
 $errors = [];
-$success = false;
-$bookingId = null;
-$totalPrice = 0;
 
-$name = '';
-$email = '';
-$phone = '';
+// Customer information
+$name = $customer['name'];
+$email = $customer['email'];
+$phone = $customer['contact_number'];
+
 $checkIn = '';
 $checkOut = '';
 $guests = 1;
+$totalPrice = 0;
 
-// Process form
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    $name = trim($_POST['guest_name'] ?? '');
-    $email = trim($_POST['guest_email'] ?? '');
-    $phone = trim($_POST['guest_phone'] ?? '');
-    $checkIn = trim($_POST['check_in'] ?? '');
-    $checkOut = trim($_POST['check_out'] ?? '');
+    $checkIn = is_string($_POST['check_in'] ?? null)
+        ? trim($_POST['check_in']) : '';
+
+    $checkOut = is_string($_POST['check_out'] ?? null)
+        ? trim($_POST['check_out']) : '';
+
     $guests = filter_var(
         $_POST['guests'] ?? null,
         FILTER_VALIDATE_INT
     );
 
-    // Security token check
+    // Validate CSRF token
+    $token = $_POST['csrf_token'] ?? '';
+
     if (
-        !isset($_POST['csrf_token']) ||
-        !hash_equals(
-            $_SESSION['booking_csrf'],
-            $_POST['csrf_token']
-        )
+        !is_string($token) ||
+        !hash_equals($_SESSION['booking_csrf'], $token)
     ) {
-        $errors[] = "Invalid form submission.";
+        $errors[] = 'Invalid form submission.';
     }
 
+    // Validate customer details
     if ($name === '' || mb_strlen($name) > 100) {
-        $errors[] = "Enter a valid full name.";
+        $errors[] = 'Invalid customer name.';
     }
 
-    if (
-        !filter_var($email, FILTER_VALIDATE_EMAIL) ||
-        strlen($email) > 150
-    ) {
-        $errors[] = "Enter a valid email address.";
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'Invalid customer email.';
     }
 
-    if (
-        !preg_match('/^[0-9+\-\s()]{7,20}$/', $phone)
-    ) {
-        $errors[] = "Enter a valid phone number.";
+    if (!preg_match('/^[0-9+\-\s()]{7,20}$/', $phone)) {
+        $errors[] = 'Invalid phone number.';
     }
 
+    // Validate guests
     if (
         $guests === false ||
         $guests < 1 ||
         $guests > (int)$room['max_guests']
     ) {
-        $errors[] = "Invalid number of guests.";
+        $errors[] = 'Invalid number of guests.';
     }
 
     // Validate dates
@@ -136,48 +158,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $end->format('Y-m-d') === $checkOut;
 
     if (!$validStart || !$validEnd) {
-        $errors[] = "Please select valid dates.";
-    } else {
-        $today = new DateTimeImmutable('today');
 
-        if ($start < $today) {
-            $errors[] =
-                "Check-in cannot be in the past.";
+        $errors[] = 'Please select valid dates.';
+
+    } else {
+
+        if ($start < new DateTimeImmutable('today')) {
+            $errors[] = 'Check-in cannot be in the past.';
         }
 
         if ($end <= $start) {
-            $errors[] =
-                "Check-out must be after check-in.";
+            $errors[] = 'Check-out must be after check-in.';
         }
 
         $nights = (int)$start->diff($end)->days;
 
         if ($nights > 30) {
-            $errors[] =
-                "Maximum stay is 30 nights.";
+            $errors[] = 'Maximum stay is 30 nights.';
         }
 
-        $totalPrice =
-            $nights * (float)$room['price_per_night'];
+        $totalPrice = $nights *
+            (float)$room['price_per_night'];
     }
 
-    if ($room['status'] !== 'available') {
-        $errors[] = "This room is unavailable.";
+    if (!$isRoomAvailable) {
+        $errors[] = 'This room is unavailable.';
     }
 
     // Save booking
-    if (empty($errors)) {
+    if (!$errors) {
+
         try {
+
             $pdo->beginTransaction();
 
-            // Lock selected room row.
-            // This serializes bookings for this room.
+            // Lock selected room
             $lockStmt = $pdo->prepare(
-                "SELECT room_id, status
+                'SELECT status, max_guests, price_per_night
                  FROM rooms
                  WHERE room_id = ?
-                 FOR UPDATE"
+                 FOR UPDATE'
             );
+
             $lockStmt->execute([$roomId]);
             $lockedRoom = $lockStmt->fetch();
 
@@ -185,20 +207,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 !$lockedRoom ||
                 $lockedRoom['status'] !== 'available'
             ) {
-                throw new RuntimeException(
-                    "Room is currently unavailable."
+                throw new DomainException(
+                    'Room is currently unavailable.'
                 );
             }
 
-            // Check overlapping reservations
+            if ($guests > (int)$lockedRoom['max_guests']) {
+                throw new DomainException(
+                    'Invalid number of guests.'
+                );
+            }
+
+            $totalPrice = $nights *
+                (float)$lockedRoom['price_per_night'];
+
+            // Prevent overlapping bookings
             $checkStmt = $pdo->prepare(
-                "SELECT COUNT(*)
-                 FROM bookings
+                "SELECT COUNT(*) FROM bookings
                  WHERE room_id = ?
-                   AND booking_status IN
-                       ('pending', 'confirmed')
-                   AND check_in < ?
-                   AND check_out > ?"
+                 AND booking_status IN ('pending', 'confirmed')
+                 AND check_in < ?
+                 AND check_out > ?"
             );
 
             $checkStmt->execute([
@@ -208,15 +237,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             if ((int)$checkStmt->fetchColumn() > 0) {
-                throw new RuntimeException(
-                    "This room is already booked " .
-                    "for the selected dates."
+                throw new DomainException(
+                    'This room is already booked for the selected dates.'
                 );
             }
 
+            // Save booking
             $insertStmt = $pdo->prepare(
                 "INSERT INTO bookings
                 (
+                    user_id,
                     room_id,
                     guest_name,
                     guest_email,
@@ -227,10 +257,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     total_price,
                     booking_status
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')"
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"
             );
 
             $insertStmt->execute([
+                $userId,
                 $roomId,
                 $name,
                 $email,
@@ -245,934 +276,1108 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            // Prevent duplicate submissions
-            unset($_SESSION['booking_csrf']);
-            $success = true;
+            $_SESSION['last_booking_id'] = (int)$bookingId;
 
-        } catch (RuntimeException $ex) {
+            unset($_SESSION['booking_csrf']);
+
+            header(
+                'Location: booking-success.php?id=' .
+                urlencode((string)$bookingId),
+                true,
+                303
+            );
+
+            exit;
+
+        } catch (DomainException $ex) {
+
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
+
             $errors[] = $ex->getMessage();
 
         } catch (Throwable $ex) {
+
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
 
             error_log($ex->getMessage());
+
             $errors[] =
-                "Booking could not be saved. " .
-                "Please try again.";
+                'Booking could not be saved. Please try again.';
         }
     }
 }
+
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
     <meta charset="UTF-8">
+
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0">
 
     <title>Book Your Stay | Shanu Haven</title>
 
-    <link rel="stylesheet"
-          href="assets/css/style.css">
-
     <style>
-        
-/* ============================================
-   SHANU HAVEN - BOOKING PAGE
-   COMPLETE LUXURY CSS
-   Colours: Dark Teal, Gold, Cream
-============================================ */
-
-/* 1. BOOKING PAGE BACKGROUND */
-
-.booking-page {
-    min-height: 80vh;
-    padding: 65px 0 90px;
-
-    background:
-        radial-gradient(
-            circle at 85% 25%,
-            rgba(215, 185, 142, 0.32),
-            transparent 42%
-        ),
-        radial-gradient(
-            circle at 10% 80%,
-            rgba(45, 100, 104, 0.14),
-            transparent 42%
-        ),
-        linear-gradient(
-            135deg,
-            #F7F4ED 0%,
-            #E4EDEA 55%,
-            #F7F4ED 100%
-        );
-}
-
-/* 2. PAGE HEADING */
-
-.booking-heading {
-    text-align: center;
-    margin-bottom: 40px;
-}
-
-.booking-heading h1 {
-    color: #12343B;
-    font-size: clamp(30px, 4vw, 44px);
-    font-weight: 700;
-    margin-bottom: 12px;
-}
-
-.booking-heading p {
-    color: #657779;
-    font-size: 15px;
-}
-
-/* 3. BACK TO ROOM DETAILS */
-
-.booking-back {
-    display: inline-block;
-    margin-bottom: 25px;
-    color: #2D6468;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.3s ease;
-}
-
-.booking-back:hover {
-    color: #B59462;
-    transform: translateX(-4px);
-}
-
-/* 4. BOOKING LAYOUT */
-
-.booking-layout {
-    display: grid;
-    grid-template-columns: 1.5fr 1fr;
-    gap: 30px;
-    align-items: start;
-}
-
-/* 5. GUEST INFORMATION CARD */
-
-.booking-card {
-    background: #FFFFFF;
-    padding: 32px;
-
-    border: 2px solid rgba(215, 185, 142, 0.28);
-    border-radius: 20px;
-
-    box-shadow:
-        0 12px 35px rgba(18, 52, 59, 0.08);
-
-    transition:
-        border-color 0.35s ease,
-        box-shadow 0.35s ease,
-        transform 0.35s ease;
-}
-
-/* 6. GOLD HOVER ANIMATION */
-
-.booking-card:hover,
-.booking-card:focus-within {
-    border-color: #D7B98E;
-
-    box-shadow:
-        0 18px 45px rgba(18, 52, 59, 0.14),
-        0 0 20px rgba(215, 185, 142, 0.28);
 
-    transform: translateY(-4px);
-}
-
-/* 7. CARD HEADINGS */
-
-.booking-card h2,
-.booking-summary h2 {
-    color: #12343B;
-    font-size: 24px;
-    font-weight: 700;
-    margin-bottom: 24px;
-}
-
-/* 8. FORM GRID */
-
-.form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-}
-
-/* 9. FORM GROUP */
-
-.form-group {
-    margin-bottom: 22px;
-}
-
-/* 10. INPUT LABELS */
-
-.form-group label {
-    display: block;
-    color: #12343B;
-    font-weight: 600;
-    font-size: 14px;
-    margin-bottom: 9px;
-}
-
-/* 11. INPUT AND SELECT FIELDS */
-
-.form-group input,
-.form-group select {
-    display: block;
-    width: 100%;
-
-    padding: 14px 15px;
-
-    background: #FFFFFF;
-    color: #12343B;
-
-    border: 1.5px solid #D8DFDA;
-    border-radius: 9px;
-
-    font-size: 15px;
-    font-family: inherit;
-
-    transition:
-        border-color 0.3s ease,
-        box-shadow 0.3s ease,
-        background 0.3s ease;
-}
-
-/* 12. INPUT HOVER */
-
-.form-group input:hover,
-.form-group select:hover {
-    border-color: #D7B98E;
-    background: #FFFEFA;
-}
-
-/* 13. GOLD FOCUS EFFECT */
-
-.booking-card .form-group input:focus,
-.booking-card .form-group select:focus {
-    outline: none;
-
-    border-color: #D7B98E;
-
-    box-shadow:
-        0 0 0 4px rgba(215, 185, 142, 0.22);
-
-    background: #FFFFFF;
-}
-
-/* 14. INPUT PLACEHOLDER */
-
-.form-group input::placeholder {
-    color: #98A5A5;
-    font-size: 14px;
-}
-
-/* 15. BOOKING SUBMIT BUTTON */
-
-.booking-submit {
-    display: block;
-    width: 100%;
-
-    background: #12343B;
-    color: #D7B98E;
-
-    border: 2px solid #12343B;
-    border-radius: 10px;
-
-    padding: 16px 20px;
-
-    font-size: 16px;
-    font-weight: 700;
-    font-family: inherit;
-
-    cursor: pointer;
-
-    transition:
-        background 0.35s ease,
-        color 0.35s ease,
-        border-color 0.35s ease,
-        box-shadow 0.35s ease,
-        transform 0.35s ease;
-}
-
-/* 16. GOLD BUTTON HOVER */
-
-.booking-submit:hover {
-    background: #2D6468;
-    color: #FFFFFF;
-
-    border-color: #D7B98E;
-
-    transform: translateY(-3px);
-
-    box-shadow:
-        0 10px 25px rgba(18, 52, 59, 0.20),
-        0 0 15px rgba(215, 185, 142, 0.20);
-}
-
-.booking-submit:active {
-    transform: translateY(0);
-}
-
-.booking-submit:focus-visible {
-    outline: 3px solid #D7B98E;
-    outline-offset: 4px;
-}
-
-/* ============================================
-   YOUR SELECTED ROOM - GLASS EFFECT
-============================================ */
-
-/* 17. GLASS CARD */
-
-.booking-summary {
-    position: relative;
-    overflow: hidden;
-
-    padding: 32px;
-
-    background: rgba(255, 255, 255, 0.20);
-
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-
-    border: 1.5px solid rgba(215, 185, 142, 0.65);
-    border-radius: 20px;
-
-    box-shadow:
-        0 15px 40px rgba(18, 52, 59, 0.12);
-
-    transition:
-        background 0.35s ease,
-        border-color 0.35s ease,
-        box-shadow 0.35s ease,
-        transform 0.35s ease;
-}
-
-/* 18. GLASS HOVER */
-
-.booking-summary:hover {
-    background: rgba(255, 255, 255, 0.32);
-
-    border-color: #D7B98E;
-
-    transform: translateY(-5px);
-
-    box-shadow:
-        0 20px 45px rgba(18, 52, 59, 0.18),
-        0 0 18px rgba(215, 185, 142, 0.25);
-}
-
-/* 19. GLASS CARD TOP DECORATION */
-
-.booking-summary::before {
-    content: "";
-
-    position: absolute;
-    top: 0;
-    left: 0;
-
-    width: 100%;
-    height: 4px;
-
-    background: linear-gradient(
-        90deg,
-        transparent,
-        #D7B98E,
-        transparent
-    );
-}
-
-/* 20. ROOM IMAGE */
-
-.summary-image {
-    display: block;
-
-    width: 100%;
-    height: 210px;
-
-    object-fit: cover;
-
-    border-radius: 12px;
-
-    margin-bottom: 20px;
-
-    border: 1px solid rgba(215, 185, 142, 0.45);
-
-    transition: transform 0.4s ease;
-}
-
-.booking-summary:hover .summary-image {
-    transform: scale(1.015);
-}
-
-/* 21. ROOM DETAILS ROW */
-
-.summary-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    gap: 15px;
-    margin-bottom: 14px;
-
-    color: #263B3E;
-    font-size: 14px;
-}
-
-.summary-row strong {
-    color: #12343B;
-    text-align: right;
-}
-
-/* 22. PRICE COLOUR */
-
-.summary-price,
-.summary-row .summary-price {
-    color: #2D6468;
-    font-size: 16px;
-    font-weight: 700;
-}
-
-/* 23. TRANSPARENT TOTAL PRICE BOX */
-
-.booking-summary .summary-total {
-    background: rgba(255, 255, 255, 0.38);
-
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-
-    border: 1px solid rgba(215, 185, 142, 0.55);
-    border-radius: 12px;
-
-    padding: 20px;
-    margin-top: 25px;
-
-    box-shadow:
-        0 6px 18px rgba(18, 52, 59, 0.05);
-}
-
-/* 24. TOTAL PRICE TEXT */
-
-.summary-total p {
-    color: #657779;
-    margin-bottom: 7px;
-}
-
-.summary-total strong {
-    display: block;
-
-    color: #12343B;
-    font-size: 24px;
-    font-weight: 700;
-
-    margin-bottom: 6px;
-}
-
-/* ============================================
-   BOOKING ALERT MESSAGES
-============================================ */
-
-/* 25. COMMON ALERT */
-
-.booking-alert {
-    padding: 22px;
-    border-radius: 12px;
-    margin-bottom: 28px;
-    line-height: 1.8;
-}
-
-/* 26. ERROR MESSAGE */
-
-.booking-error {
-    background: #FFF1F0;
-    color: #8B2424;
-    border: 1px solid #E5AAAA;
-}
-
-.booking-alert ul {
-    padding-left: 22px;
-    margin-top: 8px;
-}
-
-/* 27. SUCCESS MESSAGE */
-
-.booking-success {
-    background: #EAF5EE;
-    color: #175A35;
-    border: 1px solid #9AC9A8;
-
-    box-shadow:
-        0 10px 30px rgba(18, 52, 59, 0.08);
-}
-
-.booking-success h2 {
-    color: #175A35;
-    margin-bottom: 15px;
-}
-
-.booking-alert a {
-    color: inherit;
-    text-decoration: underline;
-}
-
-/* ============================================
-   RESPONSIVE DESIGN
-============================================ */
-
-/* 28. TABLET */
-
-@media (max-width: 850px) {
-
-    .booking-layout {
-        grid-template-columns: 1fr;
-    }
-
-    .booking-summary {
-        width: 100%;
-    }
-
-    .booking-page {
-        padding: 45px 0 70px;
-    }
-}
-
-/* 29. MOBILE */
-
-@media (max-width: 550px) {
-
-    .booking-page {
-        padding: 35px 0 60px;
-    }
-
-    .booking-heading {
-        margin-bottom: 28px;
-    }
-
-    .booking-heading h1 {
-        font-size: 30px;
-    }
-
-    .booking-card,
-    .booking-summary {
-        padding: 22px;
-        border-radius: 15px;
-    }
-
-    .form-grid {
-        grid-template-columns: 1fr;
-        gap: 0;
-    }
-
-    .booking-card h2,
-    .booking-summary h2 {
-        font-size: 21px;
-    }
-
-    .summary-image {
-        height: 190px;
-    }
-
-    .summary-total strong {
-        font-size: 21px;
-    }
-
-    .booking-submit {
-        font-size: 15px;
-        padding: 15px;
-    }
-}
-
-/* 30. ACCESSIBILITY */
-
-@media (prefers-reduced-motion: reduce) {
-
-    .booking-card,
-    .booking-summary,
-    .booking-submit,
-    .summary-image,
-    .form-group input,
-    .form-group select {
-        transition: none;
-    }
-
-    .booking-card:hover,
-    .booking-summary:hover,
-    .booking-submit:hover,
-    .booking-summary:hover .summary-image {
-        transform: none;
-    }
-}
-
+        /* GLOBAL DESIGN */
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            color: #F7F4ED;
+            min-height: 100vh;
+
+            background:
+                linear-gradient(
+                    rgba(8, 30, 35, 0.85),
+                    rgba(8, 30, 35, 0.92)
+                ),
+                url('assets/images/villa-hero.png')
+                center / cover fixed;
+
+            background-color: #12343B;
+        }
+
+        .container {
+            width: 92%;
+            max-width: 1150px;
+            margin: auto;
+        }
+
+        /* HEADER */
+
+        .site-header {
+            background: rgba(18, 52, 59, 0.85);
+            border-bottom: 1px solid rgba(215, 185, 142, 0.3);
+            backdrop-filter: blur(15px);
+        }
+
+        .navbar {
+            min-height: 80px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .logo-image {
+            width: 155px;
+            height: auto;
+            display: block;
+        }
+
+        .nav-link {
+            color: #D7B98E;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            border: 1px solid #D7B98E;
+            padding: 10px 18px;
+            border-radius: 7px;
+            transition: 0.3s;
+        }
+
+        .nav-link:hover {
+            background: #D7B98E;
+            color: #12343B;
+        }
+
+        /* PAGE HEADING */
+
+        .booking-page {
+            padding: 30px 0 45px;
+        }
+
+        .booking-back {
+            color: #D7B98E;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .booking-heading {
+            text-align: center;
+            margin: 22px 0 30px;
+        }
+
+        .section-label {
+            color: #D7B98E;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 3px;
+            margin-bottom: 10px;
+        }
+
+        .booking-heading h1 {
+            font-family: Georgia, serif;
+            font-size: 40px;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+
+        .booking-heading p {
+            color: #D3DFDF;
+        }
+
+        .booking-heading .section-label {
+            color: #D7B98E;
+        }
+
+        /* BOOKING LAYOUT */
+
+        .booking-layout {
+            display: grid;
+            grid-template-columns: 1.25fr 1fr;
+            gap: 25px;
+            align-items: start;
+        }
+
+        /* GLASS CARDS */
+
+        .booking-card {
+            background: rgba(255, 255, 255, 0.07);
+            backdrop-filter: blur(18px);
+
+            border: 1px solid
+                rgba(215, 185, 142, 0.30);
+
+            border-radius: 16px;
+            padding: 25px;
+
+            box-shadow:
+                0 12px 35px rgba(0, 0, 0, 0.20);
+
+            transition: border-color 0.3s,
+                        box-shadow 0.3s;
+        }
+
+        .booking-card:hover,
+        .booking-card:focus-within {
+            border-color: #D7B98E;
+
+            box-shadow:
+                0 12px 35px rgba(0, 0, 0, 0.25),
+                0 0 15px rgba(215, 185, 142, 0.12);
+        }
+
+        .booking-card h2 {
+            font-family: Georgia, serif;
+            color: #D7B98E;
+            font-size: 25px;
+            font-weight: 500;
+            margin-bottom: 22px;
+        }
+
+        /* FORM */
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px 14px;
+
+            border: 1px solid
+                rgba(215, 185, 142, 0.35);
+
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.15);
+            color: #FFFFFF;
+            font-family: inherit;
+            font-size: 14px;
+            color-scheme: dark;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            border-color: #D7B98E;
+
+            box-shadow:
+                0 0 0 3px rgba(215, 185, 142, 0.15);
+        }
+
+        .form-group input[readonly] {
+            background: rgba(255, 255, 255, 0.05);
+            color: #D3DFDF;
+            cursor: default;
+        }
+
+        .form-group select option {
+            background: #12343B;
+            color: #FFFFFF;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .form-divider {
+            border: none;
+            border-top: 1px solid
+                rgba(215, 185, 142, 0.25);
+            margin: 8px 0 22px;
+        }
+
+        .account-note {
+            font-size: 12px;
+            color: #C1D0D0;
+            margin: -5px 0 18px;
+        }
+
+        /* ROOM IMAGE */
+
+        .room-image {
+            width: 100%;
+            height: 230px;
+            object-fit: cover;
+            border-radius: 10px;
+            display: block;
+            margin-bottom: 18px;
+        }
+
+        .room-name {
+            font-family: Georgia, serif;
+            font-size: 25px;
+            margin-bottom: 12px;
+        }
+
+        .room-description {
+            font-size: 14px;
+            line-height: 1.7;
+            color: #D3DFDF;
+            margin-bottom: 15px;
+        }
+
+        .room-info-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 0;
+
+            border-bottom: 1px solid
+                rgba(215, 185, 142, 0.18);
+
+            font-size: 14px;
+        }
+
+        .room-info-row strong {
+            color: #D7B98E;
+            text-align: right;
+        }
+
+        /* FACILITIES */
+
+        .facilities {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 16px 0;
+        }
+
+        .facility-tag {
+            background: rgba(215, 185, 142, 0.10);
+
+            border: 1px solid
+                rgba(215, 185, 142, 0.30);
+
+            color: #E8D3B6;
+            padding: 6px 11px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        /* PRICE SUMMARY */
+
+        .price-summary {
+            background: rgba(215, 185, 142, 0.08);
+
+            border: 1px solid
+                rgba(215, 185, 142, 0.30);
+
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 20px;
+        }
+
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+
+            border-top: 1px solid
+                rgba(215, 185, 142, 0.35);
+
+            padding-top: 14px;
+            font-size: 16px;
+        }
+
+        .total-row strong {
+            color: #D7B98E;
+            font-size: 23px;
+        }
+
+        /* BOOKING BUTTON */
+
+        .booking-btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            background: #D7B98E;
+            color: #12343B;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-top: 5px;
+        }
+
+        .booking-btn:hover {
+            background: #E8D0AE;
+            box-shadow: 0 5px 20px
+                rgba(215, 185, 142, 0.20);
+        }
+
+        .booking-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .booking-note {
+            text-align: center;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #C1D0D0;
+            margin-top: 12px;
+        }
+
+        /* ERROR MESSAGE */
+
+        .booking-error {
+            padding: 16px 20px;
+            margin-bottom: 22px;
+            border-radius: 10px;
+            background: rgba(150, 30, 30, 0.25);
+            border: 1px solid #E99A9A;
+            color: #FFD0D0;
+            font-size: 14px;
+        }
+
+        .booking-error ul {
+            padding-left: 20px;
+            margin-top: 8px;
+            line-height: 1.8;
+        }
+
+        .status-available {
+            color: #9DE0B3 !important;
+        }
+
+        .status-unavailable {
+            color: #FFAAAA !important;
+        }
+
+        /* FOOTER */
+
+        .footer {
+            text-align: center;
+            padding: 22px;
+            background: rgba(0, 0, 0, 0.20);
+
+            border-top: 1px solid
+                rgba(215, 185, 142, 0.20);
+
+            color: #C1D0D0;
+            font-size: 13px;
+        }
+
+        /* RESPONSIVE DESIGN */
+
+        @media (max-width: 800px) {
+
+            .booking-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .booking-heading h1 {
+                font-size: 32px;
+            }
+
+            .booking-card {
+                padding: 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+
+            .form-grid {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+
+            .logo-image {
+                width: 115px;
+            }
+
+            .nav-link {
+                padding: 9px 12px;
+                font-size: 12px;
+            }
+
+            .room-image {
+                height: 200px;
+            }
+        }
 
     </style>
+
 </head>
 
 <body>
 
+<!-- HEADER -->
+
 <header class="site-header">
+
     <nav class="navbar container">
 
-        <a href="index.php" class="logo">
+        <a href="index.php">
             <img
                 src="assets/images/shanu-logo.png"
                 alt="Shanu Haven"
                 class="logo-image">
         </a>
 
-        <a href="index.php#rooms"
-           class="btn btn-cream">
+        <a href="index.php#rooms" class="nav-link">
             Back to Rooms
         </a>
 
     </nav>
+
 </header>
 
+<!-- BOOKING PAGE -->
+
 <main class="booking-page">
-<div class="container">
 
-    <a class="booking-back"
-       href="room-details.php?id=<?= $roomId ?>">
-        &larr; Back to Room Details
-    </a>
+    <div class="container">
 
-    <div class="booking-heading">
-        <p class="section-label">
-            SHANU HAVEN RESERVATIONS
-        </p>
-        <h1>Book Your Stay</h1>
-        <p>
-            Complete the form to request your booking.
-        </p>
-    </div>
+        <a href="room-details.php?id=<?= $roomId ?>"
+           class="booking-back">
 
-    <?php if (!empty($errors)): ?>
-        <div class="booking-alert booking-error"
-             role="alert">
-            <strong>Please correct the following:</strong>
-            <ul>
-                <?php foreach ($errors as $error): ?>
-                    <li><?= e($error) ?></li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-    <?php endif; ?>
+            &larr; Back to Room Details
 
-    <?php if ($success): ?>
+        </a>
 
-        <div class="booking-alert booking-success"
-             role="status">
-            <h2>Booking Request Submitted!</h2>
+        <div class="booking-heading">
 
-            <p>
-                Thank you, <?= e($name) ?>.
-                Your booking request has been saved.
+            <p class="section-label">
+                SHANU HAVEN RESERVATIONS
             </p>
 
-            <p>
-                Booking Reference:
-                <strong>#<?= e($bookingId) ?></strong>
-            </p>
+            <h1>Book Your Stay</h1>
 
             <p>
-                Status: <strong>Pending</strong>
+                Complete your reservation and enjoy
+                a relaxing coastal escape.
             </p>
 
-            <p>
-                Your reservation is not yet confirmed.
-            </p>
-
-            <a href="index.php">
-                Return to Home
-            </a>
         </div>
 
-    <?php else: ?>
+        <!-- ERROR MESSAGES -->
 
-    <div class="booking-layout">
+        <?php if (!empty($errors)): ?>
 
-        <!-- BOOKING FORM -->
-        <div class="booking-card">
+            <div class="booking-error" role="alert">
 
-            <h2>Guest Information</h2>
+                <strong>
+                    Please correct the following:
+                </strong>
 
-            <form method="POST"
-                  action="booking.php?room_id=<?= $roomId ?>">
+                <ul>
 
-                <input type="hidden"
-                       name="csrf_token"
-                       value="<?= e($_SESSION['booking_csrf']) ?>">
+                    <?php foreach ($errors as $error): ?>
 
-                <div class="form-group">
-                    <label for="guest_name">
-                        Full Name *
-                    </label>
+                        <li><?= e($error) ?></li>
+
+                    <?php endforeach; ?>
+
+                </ul>
+
+            </div>
+
+        <?php endif; ?>
+
+        <div class="booking-layout">
+
+            <!-- GUEST INFORMATION -->
+
+            <section class="booking-card">
+
+                <h2>Guest Information</h2>
+
+                <form
+                    method="POST"
+                    id="bookingForm"
+                    action="booking.php?room_id=<?= $roomId ?>">
 
                     <input
-                        type="text"
-                        id="guest_name"
-                        name="guest_name"
-                        maxlength="100"
-                        value="<?= e($name) ?>"
-                        placeholder="Enter your full name"
-                        autocomplete="name"
-                        required>
-                </div>
+                        type="hidden"
+                        name="csrf_token"
+                        value="<?= e($_SESSION['booking_csrf']) ?>">
 
-                <div class="form-grid">
+                    <!-- CUSTOMER NAME -->
 
                     <div class="form-group">
-                        <label for="guest_email">
-                            Email Address *
+
+                        <label for="guest_name">
+                            Full Name
                         </label>
 
                         <input
-                            type="email"
-                            id="guest_email"
-                            name="guest_email"
-                            maxlength="150"
-                            value="<?= e($email) ?>"
-                            placeholder="example@email.com"
-                            autocomplete="email"
-                            required>
+                            type="text"
+                            id="guest_name"
+                            name="guest_name"
+                            value="<?= e($name) ?>"
+                            readonly>
+
                     </div>
+
+                    <div class="form-grid">
+
+                        <!-- EMAIL -->
+
+                        <div class="form-group">
+
+                            <label for="guest_email">
+                                Email Address
+                            </label>
+
+                            <input
+                                type="email"
+                                id="guest_email"
+                                name="guest_email"
+                                value="<?= e($email) ?>"
+                                readonly>
+
+                        </div>
+
+                        <!-- PHONE -->
+
+                        <div class="form-group">
+
+                            <label for="guest_phone">
+                                Phone Number
+                            </label>
+
+                            <input
+                                type="tel"
+                                id="guest_phone"
+                                name="guest_phone"
+                                value="<?= e($phone) ?>"
+                                readonly>
+
+                        </div>
+
+                    </div>
+
+                    <p class="account-note">
+                        Guest information is automatically
+                        filled from your registered account.
+                    </p>
+
+                    <hr class="form-divider">
+
+                    <h2>Reservation Details</h2>
+
+                    <div class="form-grid">
+
+                        <!-- CHECK-IN -->
+
+                        <div class="form-group">
+
+                            <label for="check_in">
+                                Check-in Date *
+                            </label>
+
+                            <input
+                                type="date"
+                                id="check_in"
+                                name="check_in"
+                                min="<?= date('Y-m-d') ?>"
+                                value="<?= e($checkIn) ?>"
+                                required>
+
+                        </div>
+
+                        <!-- CHECK-OUT -->
+
+                        <div class="form-group">
+
+                            <label for="check_out">
+                                Check-out Date *
+                            </label>
+
+                            <input
+                                type="date"
+                                id="check_out"
+                                name="check_out"
+                                min="<?= date('Y-m-d', strtotime('+1 day')) ?>"
+                                value="<?= e($checkOut) ?>"
+                                required>
+
+                        </div>
+
+                    </div>
+
+                    <!-- GUEST COUNT -->
 
                     <div class="form-group">
-                        <label for="guest_phone">
-                            Phone Number *
+
+                        <label for="guests">
+                            Number of Guests *
                         </label>
 
-                        <input
-                            type="tel"
-                            id="guest_phone"
-                            name="guest_phone"
-                            maxlength="20"
-                            value="<?= e($phone) ?>"
-                            placeholder="07XXXXXXXX"
-                            autocomplete="tel"
+                        <select
+                            name="guests"
+                            id="guests"
                             required>
+
+                            <?php for (
+                                $i = 1;
+                                $i <= (int)$room['max_guests'];
+                                $i++
+                            ): ?>
+
+                                <option
+                                    value="<?= $i ?>"
+                                    <?= $guests === $i
+                                        ? 'selected' : '' ?>>
+
+                                    <?= $i ?>
+                                    <?= $i === 1
+                                        ? 'Guest' : 'Guests' ?>
+
+                                </option>
+
+                            <?php endfor; ?>
+
+                        </select>
+
                     </div>
 
-                </div>
+                    <!-- SUBMIT BUTTON -->
 
-                <h2>Stay Information</h2>
+                    <button
+                        type="submit"
+                        class="booking-btn"
+                        <?= !$isRoomAvailable
+                            ? 'disabled' : '' ?>>
 
-                <div class="form-grid">
+                        <?= $isRoomAvailable
+                            ? 'Confirm Booking'
+                            : 'Room Unavailable' ?>
 
-                    <div class="form-group">
-                        <label for="check_in">
-                            Check-in Date *
-                        </label>
+                    </button>
 
-                        <input
-                            type="date"
-                            id="check_in"
-                            name="check_in"
-                            min="<?= date('Y-m-d') ?>"
-                            value="<?= e($checkIn) ?>"
-                            required>
-                    </div>
+                    <p class="booking-note">
 
-                    <div class="form-group">
-                        <label for="check_out">
-                            Check-out Date *
-                        </label>
+                        Your reservation will be submitted
+                        for administrator approval.
 
-                        <input
-                            type="date"
-                            id="check_out"
-                            name="check_out"
-                            min="<?= date('Y-m-d', strtotime('+1 day')) ?>"
-                            value="<?= e($checkOut) ?>"
-                            required>
-                    </div>
+                    </p>
 
-                </div>
+                </form>
 
-                <div class="form-group">
-                    <label for="guests">
-                        Number of Guests *
-                    </label>
+            </section>
 
-                    <select
-                        id="guests"
-                        name="guests"
-                        required>
+            <!-- SELECTED ROOM -->
 
-                        <?php for (
-                            $i = 1;
-                            $i <= (int)$room['max_guests'];
-                            $i++
-                        ): ?>
+            <section class="booking-card">
 
-                            <option
-                                value="<?= $i ?>"
-                                <?= $guests == $i
-                                    ? 'selected' : '' ?>>
-                                <?= $i ?>
-                                <?= $i === 1
-                                    ? 'Guest' : 'Guests' ?>
-                            </option>
+                <h2>Selected Room</h2>
 
-                        <?php endfor; ?>
+                <img
+                    src="<?= e($imagePath) ?>"
+                    alt="<?= e($room['room_name']) ?>"
+                    class="room-image">
 
-                    </select>
-                </div>
+                <h3 class="room-name">
 
-                <p style="color:#657779;
-                          font-size:13px;
-                          margin-bottom:22px;">
-                    Your booking will be saved as
-                    pending until confirmed.
+                    <?= e($room['room_name']) ?>
+
+                </h3>
+
+                <p class="room-description">
+
+                    <?= e($room['description'] ?? '') ?>
+
                 </p>
 
-                <button type="submit"
-                        class="booking-submit">
-                    Confirm Booking Request
-                </button>
+                <div class="room-info-row">
 
-            </form>
+                    <span>Price per Night</span>
+
+                    <strong>
+
+                        LKR <?= number_format(
+                            (float)$room['price_per_night'],
+                            2
+                        ) ?>
+
+                    </strong>
+
+                </div>
+
+                <div class="room-info-row">
+
+                    <span>Maximum Guests</span>
+
+                    <strong>
+
+                        <?= (int)$room['max_guests'] ?>
+
+                    </strong>
+
+                </div>
+
+                <div class="room-info-row">
+
+                    <span>Room Status</span>
+
+                    <strong class="<?= $isRoomAvailable
+                        ? 'status-available'
+                        : 'status-unavailable' ?>">
+
+                        <?= e(ucfirst($room['status'])) ?>
+
+                    </strong>
+
+                </div>
+
+                <!-- ROOM FACILITIES -->
+
+                <div class="facilities">
+
+                    <?php
+
+                    $facilities = array_filter(
+                        array_map(
+                            'trim',
+                            explode(
+                                ',',
+                                (string)($room['facilities'] ?? '')
+                            )
+                        )
+                    );
+
+                    ?>
+
+                    <?php foreach ($facilities as $facility): ?>
+
+                        <span class="facility-tag">
+
+                            <?= e($facility) ?>
+
+                        </span>
+
+                    <?php endforeach; ?>
+
+                </div>
+
+                <!-- PRICE SUMMARY -->
+
+                <div class="price-summary">
+
+                    <div class="price-row">
+
+                        <span>Price per Night</span>
+
+                        <span>
+
+                            LKR <?= number_format(
+                                (float)$room['price_per_night'],
+                                2
+                            ) ?>
+
+                        </span>
+
+                    </div>
+
+                    <div class="price-row">
+
+                        <span>Number of Nights</span>
+
+                        <span id="nightCount">0</span>
+
+                    </div>
+
+                    <div class="price-row">
+
+                        <span>Number of Guests</span>
+
+                        <span id="guestCount">
+
+                            <?= (int)$guests ?>
+
+                        </span>
+
+                    </div>
+
+                    <div class="total-row">
+
+                        <span>Total Price</span>
+
+                        <strong id="totalPrice">
+
+                            LKR 0.00
+
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </section>
 
         </div>
 
-        <!-- BOOKING SUMMARY -->
-        <aside class="booking-summary">
-
-            <h2>Your Selected Room</h2>
-
-            <img
-                src="<?= e($imagePath) ?>"
-                alt="<?= e($room['room_name']) ?>"
-                class="summary-image">
-
-            <h3 style="color:#12343B;
-                       margin-bottom:18px;">
-                <?= e($room['room_name']) ?>
-            </h3>
-
-            <div class="summary-row">
-                <span>Maximum Guests</span>
-                <strong>
-                    <?= (int)$room['max_guests'] ?>
-                </strong>
-            </div>
-
-            <div class="summary-row">
-                <span>Price Per Night</span>
-                <strong class="summary-price">
-                    LKR <?= number_format(
-                        (float)$room['price_per_night']
-                    ) ?>
-                </strong>
-            </div>
-
-            <div class="summary-row">
-                <span>Room Status</span>
-                <strong>
-                    <?= e(ucfirst($room['status'])) ?>
-                </strong>
-            </div>
-
-            <div class="summary-total">
-                <p>Estimated Total</p>
-                <strong id="estimated-total">
-                    Select your dates
-                </strong>
-                <p id="night-count"
-                   style="font-size:13px;
-                          color:#657779;">
-                    Based on selected nights
-                </p>
-            </div>
-
-        </aside>
-
     </div>
 
-    <?php endif; ?>
-
-</div>
 </main>
 
+<!-- FOOTER -->
+
 <footer class="footer">
-    <div class="footer-bottom">
-        <p>
-            &copy; <?= date('Y') ?>
-            Shanu Haven. All Rights Reserved.
-        </p>
-    </div>
+
+    &copy; <?= date('Y') ?>
+    Shanu Haven Coastal Villa.
+    All Rights Reserved.
+
 </footer>
 
+<!-- JAVASCRIPT -->
+
 <script>
-const checkIn = document.getElementById('check_in');
-const checkOut = document.getElementById('check_out');
-const total = document.getElementById('estimated-total');
-const nightCount = document.getElementById('night-count');
 
-const pricePerNight =
-    <?= json_encode((float)$room['price_per_night']) ?>;
+    const bookingForm =
+        document.getElementById('bookingForm');
 
-function updateTotal() {
-    if (!checkIn || !checkOut || !total) return;
+    const checkIn =
+        document.getElementById('check_in');
 
-    if (checkIn.value) {
-        const nextDay = new Date(
-            checkIn.value + 'T00:00:00'
-        );
+    const checkOut =
+        document.getElementById('check_out');
 
-        nextDay.setDate(nextDay.getDate() + 1);
+    const guests =
+        document.getElementById('guests');
 
-        const minDate = [
-            nextDay.getFullYear(),
-            String(nextDay.getMonth() + 1).padStart(2, '0'),
-            String(nextDay.getDate()).padStart(2, '0')
-        ].join('-');
+    const nightCount =
+        document.getElementById('nightCount');
+
+    const guestCount =
+        document.getElementById('guestCount');
+
+    const totalPrice =
+        document.getElementById('totalPrice');
+
+    const pricePerNight =
+        <?= json_encode((float)$room['price_per_night']) ?>;
+
+    const maxGuests =
+        <?= (int)$room['max_guests'] ?>;
+
+    const today =
+        <?= json_encode(date('Y-m-d')) ?>;
+
+    const formatter = new Intl.NumberFormat('en-LK', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+
+    // Update minimum checkout date
+
+    function updateCheckoutDate() {
+
+        if (!checkIn.value) return;
+
+        const nextDay =
+            new Date(checkIn.value + 'T00:00:00Z');
+
+        nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+
+        const minDate =
+            nextDay.toISOString().slice(0, 10);
 
         checkOut.min = minDate;
+
+        if (
+            checkOut.value &&
+            checkOut.value < minDate
+        ) {
+            checkOut.value = '';
+        }
+
     }
 
-    if (!checkIn.value || !checkOut.value) {
-        total.textContent = 'Select your dates';
-        nightCount.textContent = 'Based on selected nights';
-        return;
+    // Calculate total price
+
+    function calculateTotal() {
+
+        guestCount.textContent = guests.value || '0';
+
+        if (!checkIn.value || !checkOut.value) {
+
+            nightCount.textContent = '0';
+            totalPrice.textContent = 'LKR 0.00';
+
+            return 0;
+        }
+
+        const start =
+            new Date(checkIn.value + 'T00:00:00Z');
+
+        const end =
+            new Date(checkOut.value + 'T00:00:00Z');
+
+        const nights =
+            Math.round(
+                (end - start) / 86400000
+            );
+
+        if (!Number.isFinite(nights) || nights <= 0) {
+
+            nightCount.textContent = '0';
+            totalPrice.textContent = 'LKR 0.00';
+
+            return 0;
+        }
+
+        const total = nights * pricePerNight;
+
+        nightCount.textContent = nights;
+
+        totalPrice.textContent =
+            'LKR ' + formatter.format(total);
+
+        return nights;
+
     }
 
-    const start = Date.parse(checkIn.value + 'T00:00:00Z');
-    const end = Date.parse(checkOut.value + 'T00:00:00Z');
+    // Event listeners
 
-    const nights = Math.round(
-        (end - start) / 86400000
+    checkIn.addEventListener('change', function () {
+
+        updateCheckoutDate();
+        calculateTotal();
+
+    });
+
+    checkOut.addEventListener(
+        'change',
+        calculateTotal
     );
 
-    if (nights <= 0 || nights > 30) {
-        total.textContent = 'Invalid date range';
-        nightCount.textContent = 'Maximum 30 nights';
-        return;
-    }
+    guests.addEventListener(
+        'change',
+        calculateTotal
+    );
 
-    const amount = nights * pricePerNight;
+    // Client-side validation
 
-    total.textContent = 'LKR ' +
-        amount.toLocaleString('en-LK');
+    bookingForm.addEventListener('submit', function (event) {
 
-    nightCount.textContent =
-        nights + (nights === 1 ? ' night' : ' nights');
-}
+        const nights = calculateTotal();
 
-if (checkIn && checkOut) {
-    checkIn.addEventListener('change', updateTotal);
-    checkOut.addEventListener('change', updateTotal);
-    updateTotal();
-}
+        if (!checkIn.value || !checkOut.value) {
+
+            event.preventDefault();
+
+            alert('Please select your booking dates.');
+
+            return;
+        }
+
+        if (checkIn.value < today) {
+
+            event.preventDefault();
+
+            alert('Check-in cannot be in the past.');
+
+            return;
+        }
+
+        if (nights <= 0) {
+
+            event.preventDefault();
+
+            alert('Check-out must be after check-in.');
+
+            return;
+        }
+
+        if (nights > 30) {
+
+            event.preventDefault();
+
+            alert('Maximum stay is 30 nights.');
+
+            return;
+        }
+
+        if (
+            Number(guests.value) < 1 ||
+            Number(guests.value) > maxGuests
+        ) {
+
+            event.preventDefault();
+
+            alert('Invalid number of guests.');
+
+        }
+
+    });
+
+    // Initial calculation
+
+    updateCheckoutDate();
+    calculateTotal();
+
 </script>
 
 </body>

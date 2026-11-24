@@ -1,0 +1,523 @@
+
+/* ==========================================
+   SHANU HAVEN - PREMIUM CUSTOMER AUTH
+========================================== */
+
+:root {
+    --dark-teal: #12343B;
+    --gold: #D7B98E;
+    --cream: #F7F4ED;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Background */
+
+.customer-auth-page {
+    min-height: 100vh;
+    font-family: 'Segoe UI', Arial, sans-serif;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(8, 30, 35, 0.55),
+            rgba(18, 52, 59, 0.30)
+        ),
+        url('../images/villa-hero.png');
+
+    background-color: #12343B;
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    padding: 25px 16px;
+    color: var(--cream);
+}
+
+/* Main container */
+
+.auth-container {
+    width: 100%;
+    max-width: 540px;
+}
+
+/* Branding */
+
+.auth-brand {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.auth-brand h1 {
+    font-family: Georgia, serif;
+    font-size: 34px;
+    font-weight: 500;
+    letter-spacing: 5px;
+    color: var(--gold);
+
+    text-shadow: 0 3px 15px rgba(0, 0, 0, 0.5);
+}
+
+.auth-brand p {
+    font-size: 11px;
+    letter-spacing: 6px;
+    color: var(--gold);
+    margin-top: 7px;
+}
+
+/* Premium Transparent Glass Card */
+
+.auth-card {
+    position: relative;
+
+    padding: 30px 38px;
+
+    background: linear-gradient(
+        135deg,
+        rgba(18, 52, 59, 0.38),
+        rgba(18, 52, 59, 0.20)
+    );
+
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+
+    border: 1px solid rgba(215, 185, 142, 0.55);
+    border-radius: 22px;
+
+    box-shadow:
+        0 20px 55px rgba(0, 0, 0, 0.30),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 0 25px rgba(215, 185, 142, 0.06);
+}
+
+/* Decorative Gold Line */
+
+.auth-card::before {
+    content: '';
+    position: absolute;
+
+    top: 0;
+    left: 15%;
+    width: 70%;
+    height: 1px;
+
+    background: linear-gradient(
+        90deg,
+        transparent,
+        #D7B98E,
+        transparent
+    );
+
+    box-shadow: 0 0 12px rgba(215, 185, 142, 0.6);
+}
+
+/* Heading */
+
+.auth-card h2 {
+    text-align: center;
+    font-family: Georgia, serif;
+    font-size: 32px;
+    font-weight: 500;
+    color: var(--cream);
+
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.auth-subtitle {
+    text-align: center;
+    color: var(--gold);
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 8px 0 24px;
+}
+
+/* Form Fields */
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 7px;
+
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--cream);
+
+    text-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
+}
+
+.form-group input {
+    width: 100%;
+    height: 46px;
+
+    background: rgba(8, 30, 35, 0.30);
+
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 9px;
+
+    padding: 0 15px;
+
+    color: var(--cream);
+    font-size: 14px;
+
+    outline: none;
+    transition: 0.3s ease;
+}
+
+.form-group input::placeholder {
+    color: rgba(247, 244, 237, 0.65);
+}
+
+.form-group input:hover {
+    border-color: rgba(215, 185, 142, 0.60);
+}
+
+.form-group input:focus {
+    border-color: var(--gold);
+
+    background: rgba(8, 30, 35, 0.45);
+
+    box-shadow:
+        0 0 0 3px rgba(215, 185, 142, 0.10),
+        0 0 15px rgba(215, 185, 142, 0.08);
+}
+
+/* Browser Autofill */
+
+.form-group input:-webkit-autofill {
+    -webkit-text-fill-color: #F7F4ED;
+
+    -webkit-box-shadow:
+        0 0 0 1000px #29474D inset;
+}
+
+/* Password Show and Hide */
+
+.password-wrapper {
+    position: relative;
+}
+
+.password-wrapper input {
+    padding-right: 70px;
+}
+
+.toggle-password {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+
+    transform: translateY(-50%);
+
+    background: transparent;
+    border: none;
+
+    color: var(--gold);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.toggle-password:hover {
+    color: var(--cream);
+}
+
+/* Create Account Button */
+
+.auth-button {
+    display: block;
+    width: 100%;
+
+    padding: 14px;
+    margin-top: 8px;
+
+    border: 1px solid transparent;
+    border-radius: 9px;
+
+    background: linear-gradient(
+        135deg,
+        #D7B98E,
+        #E6CBA5
+    );
+
+    color: var(--dark-teal);
+
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    text-decoration: none;
+
+    cursor: pointer;
+    transition: 0.3s ease;
+}
+
+.auth-button:hover {
+    background: #E8CFA9;
+
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 8px 25px rgba(215, 185, 142, 0.25);
+}
+
+/* Error Messages */
+
+.error-message {
+    background: rgba(150, 25, 25, 0.35);
+    border: 1px solid rgba(255, 130, 130, 0.45);
+
+    color: #FFD0D0;
+
+    padding: 12px;
+    border-radius: 8px;
+
+    font-size: 13px;
+    line-height: 1.6;
+
+    margin-bottom: 18px;
+}
+
+.client-error {
+    color: #FFD0D0;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.client-error:empty {
+    display: none;
+}
+
+/* Success Message */
+
+.success-icon {
+    width: 70px;
+    height: 70px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    margin: 0 auto 20px;
+
+    border: 1px solid var(--gold);
+    border-radius: 50%;
+
+    background: rgba(215, 185, 142, 0.12);
+
+    color: var(--gold);
+    font-size: 32px;
+}
+
+/* Login Link */
+
+.auth-footer {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.auth-footer a {
+    color: var(--gold);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.auth-footer a:hover {
+    text-decoration: underline;
+}
+
+/* Back to Home */
+
+.back-home {
+    display: block;
+    text-align: center;
+
+    margin-top: 20px;
+
+    color: var(--gold);
+    font-size: 14px;
+    text-decoration: none;
+
+    transition: 0.3s ease;
+}
+
+.back-home:hover {
+    color: var(--cream);
+}
+
+/* Keyboard Accessibility */
+
+.auth-button:focus-visible,
+.toggle-password:focus-visible,
+.back-home:focus-visible {
+    outline: 2px solid var(--cream);
+    outline-offset: 4px;
+}
+
+/* Mobile Responsive Design */
+
+@media (max-width: 600px) {
+
+    .auth-container {
+        max-width: 100%;
+    }
+
+    .auth-card {
+        padding: 25px 22px;
+        border-radius: 18px;
+    }
+
+    .auth-brand h1 {
+        font-size: 25px;
+        letter-spacing: 3px;
+    }
+
+    .auth-brand p {
+        font-size: 10px;
+        letter-spacing: 4px;
+    }
+
+    .auth-card h2 {
+        font-size: 27px;
+    }
+
+    .customer-auth-page {
+        background-attachment: scroll;
+    }
+}
+
+
+.auth-card {
+    background: linear-gradient(
+        135deg,
+        rgba(18, 52, 59, 0.34),
+        rgba(18, 52, 59, 0.18)
+    );
+
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+}
+/* ==========================================
+   SHANU HAVEN - CUSTOMER LOGIN PAGE
+========================================== */
+
+.login-container {
+    width: 100%;
+    max-width: 540px;
+}
+
+.login-card {
+    position: relative;
+
+    padding: 40px 38px;
+
+    background: linear-gradient(
+        135deg,
+        rgba(18, 52, 59, 0.34),
+        rgba(18, 52, 59, 0.18)
+    );
+
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+
+    border: 1px solid rgba(215, 185, 142, 0.55);
+    border-radius: 22px;
+
+    box-shadow:
+        0 20px 55px rgba(0, 0, 0, 0.30),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Login Heading */
+
+.login-card h2 {
+    font-size: 34px;
+    color: #F7F4ED;
+    margin-bottom: 10px;
+}
+
+.login-card .auth-subtitle {
+    margin-bottom: 30px;
+}
+
+/* Input Fields */
+
+.login-card .form-group {
+    margin-bottom: 22px;
+}
+
+.login-card .form-group input {
+    height: 50px;
+    font-size: 14px;
+
+    background: rgba(255, 255, 255, 0.08);
+
+    border: 1px solid rgba(255, 255, 255, 0.25);
+
+    color: #F7F4ED;
+}
+
+.login-card .form-group input:focus {
+    border-color: #D7B98E;
+
+    box-shadow:
+        0 0 12px rgba(215, 185, 142, 0.15);
+}
+
+/* Login Button */
+
+.login-card .auth-button {
+    margin-top: 15px;
+    padding: 15px;
+    font-size: 15px;
+}
+
+/* Registration Link */
+
+.login-card .auth-footer {
+    margin-top: 25px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #F7F4ED;
+}
+
+.login-card .auth-footer a {
+    color: #D7B98E;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.login-card .auth-footer a:hover {
+    text-decoration: underline;
+}
+
+/* Mobile Responsive */
+
+@media (max-width: 600px) {
+
+    .login-container {
+        max-width: 100%;
+    }
+
+    .login-card {
+        padding: 30px 22px;
+        border-radius: 18px;
+    }
+
+    .login-card h2 {
+        font-size: 28px;
+    }
+
+    .login-card .auth-footer {
+        font-size: 13px;
+    }
+}
+

@@ -1,4 +1,100 @@
 
+
+<?php
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/customer-session.php';
+
+// Room availability search
+
+$checkIn = trim($_GET['check_in'] ?? '');
+$checkOut = trim($_GET['check_out'] ?? '');
+$guests = (int)($_GET['guests'] ?? 1);
+
+$searchError = '';
+$isSearch = isset($_GET['search']);
+
+$sql = "SELECT * FROM rooms";
+$params = [];
+
+if ($isSearch) {
+
+    $start = DateTimeImmutable::createFromFormat('!Y-m-d', $checkIn);
+    $end = DateTimeImmutable::createFromFormat('!Y-m-d', $checkOut);
+
+    if (
+        !$start || !$end ||
+        $start->format('Y-m-d') !== $checkIn ||
+        $end->format('Y-m-d') !== $checkOut ||
+        $start < new DateTimeImmutable('today') ||
+        $end <= $start ||
+        $start->diff($end)->days > 30 ||
+        $guests < 1
+    ) {
+        $searchError = 'Please enter valid dates and guest count.';
+        $isSearch = false;
+
+    } else {
+
+        $sql .= " WHERE status = 'available'
+                  AND max_guests >= ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM bookings b
+                      WHERE b.room_id = rooms.room_id
+                      AND b.booking_status IN ('pending', 'confirmed')
+                      AND b.check_in < ?
+                      AND b.check_out > ?
+                  )";
+
+        $params = [$guests, $checkOut, $checkIn];
+    }
+}
+
+$sql .= " ORDER BY room_id ASC";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+
+$rooms = $stmt->fetchAll(PDO::FETCH_ASSOC);
+ 
+// Escape HTML output
+function e($value) {
+    return htmlspecialchars(
+        (string)$value,
+        ENT_QUOTES,
+        'UTF-8'
+    );
+}
+
+// Get a safe room image path
+function homeRoomImage($filename) {
+
+    $filename = (string)$filename;
+
+    $oldImages = [
+        'Deluxe Room.png',
+        'Ocean View Room.png',
+        'Family Suite.png',
+        'villa-hero.png'
+    ];
+
+    if (in_array($filename, $oldImages, true)) {
+        return 'assets/images/' .
+            rawurlencode($filename);
+    }
+
+    if (preg_match(
+        '/^room_[a-f0-9]{32}\.(jpg|png|webp)$/',
+        $filename
+    )) {
+        return 'assets/images/rooms/' .
+            rawurlencode($filename);
+    }
+
+    return 'assets/images/villa-hero.png';
+}
+?>
+
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -14,10 +110,109 @@
     <title>Shanu Haven | Luxury Coastal Villa</title>
 
     <!-- Main CSS -->
-    <link rel="stylesheet" href="assets/css/style.css?v=3">
-
+<link rel="stylesheet" href="assets/css/style.css?v=22">
     <!-- JavaScript -->
     <script src="assets/js/main.js" defer></script>
+
+    <link rel="stylesheet"
+      href="assets/css/customer-nav.css">
+
+      <style>
+
+/* Room Availability Search Design */
+
+.availability-search {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto auto;
+    align-items: end;
+    gap: 20px;
+    padding: 25px;
+    margin-bottom: 35px;
+    background: #12343B;
+    border: 1px solid #D7B98E;
+    border-radius: 16px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.availability-search .search-field {
+    min-width: 0;
+}
+
+.availability-search label {
+    display: block;
+    color: #D7B98E;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.availability-search input {
+    width: 100%;
+    height: 45px;
+    padding: 10px 12px;
+    box-sizing: border-box;
+    background: rgba(255,255,255,0.10);
+    color: #F7F4ED;
+    border: 1px solid rgba(215,185,142,0.5);
+    border-radius: 8px;
+    color-scheme: dark;
+    font-size: 14px;
+}
+
+.availability-search input:focus {
+    outline: none;
+    border-color: #D7B98E;
+    box-shadow: 0 0 0 3px rgba(215,185,142,0.15);
+}
+
+.availability-search .search-btn {
+    height: 45px;
+    padding: 0 25px;
+    background: #D7B98E;
+    color: #12343B;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.availability-search .search-btn:hover {
+    background: #F7F4ED;
+}
+
+.availability-search .reset-search {
+    color: #D7B98E;
+    padding: 12px;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.search-result {
+    color: #12343B;
+    margin-bottom: 20px;
+}
+
+.search-error {
+    color: #922B21;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+    .availability-search {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 550px) {
+    .availability-search {
+        grid-template-columns: 1fr;
+        padding: 18px;
+    }
+}
+
+</style>
+
 </head>
 
 <body>
@@ -68,6 +263,72 @@
                 <a href="#rooms" class="nav-book">
                     Book Now
                 </a>
+
+                <div class="customer-nav-actions">
+
+    <?php if (isCustomerLoggedIn()): ?>
+
+        <a href="my-bookings.php"
+   class="customer-login-btn">
+
+    My Bookings
+
+</a>
+
+        <span class="customer-nav-name">
+
+            <span class="customer-user-icon">
+                &#9679;
+            </span>
+
+            <?= htmlspecialchars(
+                getCustomerName(),
+                ENT_QUOTES,
+                'UTF-8'
+            ) ?>
+
+        </span>
+
+        <form method="POST"
+              action="logout.php"
+              class="customer-logout-form">
+
+            <input type="hidden"
+                   name="csrf_token"
+                   value="<?= htmlspecialchars(
+                       getCustomerLogoutToken(),
+                       ENT_QUOTES,
+                       'UTF-8'
+                   ) ?>">
+
+            <button type="submit"
+                    class="customer-logout-btn">
+
+                Logout
+
+            </button>
+
+        </form>
+
+    <?php else: ?>
+
+        <a href="login.php"
+           class="customer-login-btn">
+
+            Login
+
+        </a>
+
+        <a href="register.php"
+           class="customer-register-btn">
+
+            Register
+
+        </a>
+
+    <?php endif; ?>
+
+</div>
 
             </div>
 
@@ -185,170 +446,202 @@
              ROOMS SECTION
         ================================== -->
 
-        <section class="section rooms" id="rooms">
+    
+<!-- ==================================
+     ROOMS SECTION
+================================== -->
 
-            <div class="container">
+<section class="section rooms" id="rooms">
 
-                <div class="section-heading">
+    <div class="container">
 
-                    <p class="section-label">
-                        OUR ACCOMMODATION
-                    </p>
+        <div class="section-heading">
 
-                    <h2>
-                        Explore Our Beautiful Rooms
-                    </h2>
+            <p class="section-label">
+                OUR ACCOMMODATION
+            </p>
 
-                    <p>
-                        Find the perfect room for your stay.
-                    </p>
+            <h2>
+                Explore Our Beautiful Rooms
+            </h2>
 
-                </div>
+            <p>
+                Find the perfect room for your stay.
+            </p>
 
+        </div>
 
-                <div class="room-grid">
+        <form class="availability-search"
+      method="GET"
+      action="index.php#rooms">
 
-                    <!-- =====================
-                         DELUXE ROOM
-                    ===================== -->
+    <div class="search-field">
 
-                    <article class="room-card">
+        <label for="search_check_in">
+            Check-in Date
+        </label>
 
-                        <img
-                            src="assets/images/Deluxe Room.png"
-                            alt="Deluxe Room"
-                            loading="lazy"
+        <input type="date"
+               id="search_check_in"
+               name="check_in"
+               min="<?= date('Y-m-d') ?>"
+               value="<?= e($checkIn) ?>"
+               required>
+
+    </div>
+
+    <div class="search-field">
+
+        <label for="search_check_out">
+            Check-out Date
+        </label>
+
+        <input type="date"
+               id="search_check_out"
+               name="check_out"
+               min="<?= date('Y-m-d', strtotime('+1 day')) ?>"
+               value="<?= e($checkOut) ?>"
+               required>
+
+    </div>
+
+    <div class="search-field">
+
+        <label for="search_guests">
+            Number of Guests
+        </label>
+
+        <input type="number"
+               id="search_guests"
+               name="guests"
+               min="1"
+               value="<?= (int)$guests ?>"
+               required>
+
+    </div>
+
+    <button type="submit"
+            name="search"
+            value="1"
+            class="search-btn">
+
+        Search Rooms
+
+    </button>
+
+    <a href="index.php#rooms"
+       class="reset-search">
+
+        Reset
+
+    </a>
+
+</form>
+
+<?php if ($searchError): ?>
+
+    <p class="search-error">
+        <?= e($searchError) ?>
+    </p>
+
+<?php elseif ($isSearch): ?>
+
+    <p class="search-result">
+        <?= count($rooms) ?> available room(s) found.
+    </p>
+
+<?php endif; ?>
+
+        <div class="room-grid">
+
+            <?php foreach ($rooms as $room): ?>
+
+                <article class="room-card">
+
+                    <img
+                        src="<?= e(homeRoomImage($room['image'])) ?>"
+                        alt="<?= e($room['room_name']) ?>"
+                        loading="lazy"
+                    >
+
+                    <div class="room-info">
+
+                        <h3>
+                            <?= e($room['room_name']) ?>
+                        </h3>
+
+                        <p>
+                            <?= e($room['description']) ?>
+                        </p>
+
+                        <p>
+                            <?= (int)$room['max_guests'] ?>
+                            Guests
+                            |
+                            <?= e($room['facilities']) ?>
+                        </p>
+
+                        <p class="price">
+                            LKR
+                            <?= number_format(
+                                (float)$room['price_per_night']
+                            ) ?>
+                            / night
+                        </p>
+
+                        <p class="room-availability">
+                            <?php if ($room['status'] === 'available'): ?>
+
+                                <span class="available-label">
+                                    Available
+                                </span>
+
+                            <?php else: ?>
+
+                                <span class="unavailable-label">
+                                    Currently Unavailable
+                                </span>
+
+                            <?php endif; ?>
+                        </p>
+
+                        <a
+                            href="room-details.php?id=<?= (int)$room['room_id'] ?>"
+                            class="btn btn-primary"
                         >
+                            View Details
+                        </a>
 
-                        <div class="room-info">
+                    </div>
 
-                            <h3>
-                                Deluxe Room
-                            </h3>
+                </article>
 
-                            <p>
-                                Comfortable room with
-                                modern facilities.
-                            </p>
+            <?php endforeach; ?>
 
-                            <p>
-                                2 Guests | Wi-Fi |
-                                Air Conditioning
-                            </p>
+            <?php if (!$rooms): ?>
 
-                            <p class="price">
-                                LKR 15,000 / night
-                            </p>
-
-                           
-<a href="room-details.php?id=1"
-   class="btn btn-primary">
-    View Details
-</a>
->
-
-                        </div>
-
-                    </article>
-
-
-                    <!-- =====================
-                         OCEAN VIEW ROOM
-                    ===================== -->
-
-                    <article class="room-card">
-
-                        <img
-                            src="assets/images/Ocean View Room.png"
-                            alt="Ocean View Room"
-                            loading="lazy"
-                        >
-
-                        <div class="room-info">
-
-                            <h3>
-                                Ocean View Room
-                            </h3>
-
-                            <p>
-                                Relax with a beautiful
-                                ocean view.
-                            </p>
-
-                            <p>
-                                2 Guests | Wi-Fi |
-                                Ocean View
-                            </p>
-
-                            <p class="price">
-                                LKR 22,000 / night
-                            </p>
-
-                           
-<a href="room-details.php?id=2"
-   class="btn btn-primary">
-    View Details
-</a>
-
-
-                        </div>
-
-                    </article>
-
-
-                    <!-- =====================
-                         FAMILY SUITE
-                    ===================== -->
-
-                    <article class="room-card">
-
-                        <img
-                            src="assets/images/Family Suite.png"
-                            alt="Family Suite"
-                            loading="lazy"
-                        >
-
-                        <div class="room-info">
-
-                            <h3>
-                                Family Suite
-                            </h3>
-
-                            <p>
-                                Spacious accommodation
-                                for families.
-                            </p>
-
-                            <p>
-                                4 Guests | Wi-Fi |
-                                Family Space
-                            </p>
-
-                            <p class="price">
-                                LKR 30,000 / night
-                            </p>
-
-                           
-<a href="room-details.php?id=3"
-   class="btn btn-primary">
-    View Details
-</a>
-
-
-                        </div>
-
-                    </article>
-
-                </div>
-
-                <p class="demo-note">
-                    Sample room information and prices
-                    for demonstration purposes.
+                <p>
+                    No rooms are currently listed.
                 </p>
 
-            </div>
+            <?php endif; ?>
 
-        </section>
+        </div>
+
+    </div>
+
+</section>
+
+
+                  
+
+
+         
+
+
+                     
+                           
+<a
 
 
         <!-- ==================================
@@ -468,8 +761,7 @@
                 </a>
 
                 <p class="booking-note">
-                    Online reservations will
-                    be available soon.
+                   Online reservations are now available.
                 </p>
 
             </div>
